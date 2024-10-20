@@ -101,8 +101,8 @@ public class SecurityConfig {
 			)
 			.headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin))
 			// 인증 서버 필터 체인에서 로그인 페이지로의 리디렉션을 처리하는 폼 로그인
-			.formLogin(Customizer.withDefaults());
-			// .oauth2Client(Customizer.withDefaults());
+			.formLogin(Customizer.withDefaults())
+			.oauth2Login(Customizer.withDefaults());
 
 		return http.cors(Customizer.withDefaults()).build(); // CORS
 	}
