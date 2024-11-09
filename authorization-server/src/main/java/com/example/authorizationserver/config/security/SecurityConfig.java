@@ -45,6 +45,9 @@ import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
 @EnableWebSecurity
@@ -58,26 +61,24 @@ public class SecurityConfig {
 	 */
 	@Bean
 	@Order(1)
-	public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http)
-			throws Exception {
+	public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) throws Exception {
 		OAuth2AuthorizationServerConfiguration.applyDefaultSecurity(http);
 		http.getConfigurer(OAuth2AuthorizationServerConfigurer.class)
 			.oidc(Customizer.withDefaults());	// OpenID Connect 1.0 사용
 
 		http
-			// Redirect to the login page when not authenticated from the
-			// authorization endpoint
+			// 인증 엔드포인트에서 비인가인 경우, 로그인 페이지로 리다이렉트
 			.exceptionHandling((exceptions) -> exceptions
 				.defaultAuthenticationEntryPointFor(
 					new LoginUrlAuthenticationEntryPoint("/login"),
 					new MediaTypeRequestMatcher(MediaType.TEXT_HTML)
 				)
 			)
-			// Accept access tokens for User Info and/or Client Registration
-			.oauth2ResourceServer((resourceServer) -> resourceServer
+			// 사용자 정보, 클라이언트를 위한 액세스 토큰 수용
+			.oauth2ResourceServer((oauth2) -> oauth2
 				.jwt(Customizer.withDefaults()));
 
-		return http.build();
+		return http.cors(Customizer.withDefaults()).build(); // CORS
 	}
 
 	/**
@@ -88,8 +89,7 @@ public class SecurityConfig {
 	 */
 	@Bean
 	@Order(2)
-	public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http)
-			throws Exception {
+	public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
 		http.csrf(AbstractHttpConfigurer::disable);
 		http
 			.authorizeHttpRequests(authorize -> {
@@ -100,11 +100,27 @@ public class SecurityConfig {
 				}
 			)
 			.headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin))
-			// Form login handles the redirect to the login page from the
-			// authorization server filter chain
-			.formLogin(Customizer.withDefaults());
+			// 인증 서버 필터 체인에서 로그인 페이지로의 리디렉션을 처리하는 폼 로그인
+			.formLogin(Customizer.withDefaults())
+			.oauth2Login(Customizer.withDefaults());
 
-		return http.build();
+		return http.cors(Customizer.withDefaults()).build(); // CORS
+	}
+
+	/**
+	 * CORS를 방지하기 위해 허용할 origin 등록
+	 * @return
+	 */
+	@Bean
+	public CorsConfigurationSource corsConfigurationSource() {
+		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+		CorsConfiguration config = new CorsConfiguration();
+		config.addAllowedHeader("*"); // 허용 Header
+		config.addAllowedMethod("*"); // 허용 HTTP Method
+		config.addAllowedOrigin("http://127.0.0.1:4200"); // 허용 URI
+		config.setAllowCredentials(true); // 허용
+		source.registerCorsConfiguration("/**", config);
+		return source;
 	}
 
 	/**
@@ -118,7 +134,7 @@ public class SecurityConfig {
 			.passwordEncoder(passwordEncoder()::encode)
 			// .password(passwordEncoder().encode("password"))
 			.password("1234")
-			.roles("USER")
+			.roles("USER", "ADMIN")
 			.build();
 
 		return new InMemoryUserDetailsManager(userDetails);
@@ -156,7 +172,12 @@ public class SecurityConfig {
 				scopes.add(OidcScopes.OPENID);
 				scopes.add(OidcScopes.PROFILE);
 			})
-			.clientSettings(ClientSettings.builder().requireAuthorizationConsent(true).build())
+			// Client Setting
+			.clientSettings(ClientSettings.builder()
+				.requireAuthorizationConsent(true)
+				// .requireProofKey(true)
+				.build()
+			)
 			.build();
 
 		return new InMemoryRegisteredClientRepository(customClient);
@@ -177,7 +198,7 @@ public class SecurityConfig {
 				.keyID(UUID.randomUUID().toString())
 				.build();
 		JWKSet jwkSet = new JWKSet(rsaKey);
-		return new ImmutableJWKSet<>(jwkSet);
+		return (jwkSelector, securityContext) -> jwkSelector.select(jwkSet);
 	}
 
 	/**
