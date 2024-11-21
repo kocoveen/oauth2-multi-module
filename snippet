@@ -1,0 +1,35 @@
+import java.security.SecureRandom;
+import java.util.Base64;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Base64;
+
+static String generateVerifier() {
+    SecureRandom secureRandom = new SecureRandom();
+    byte [] code = new byte[32];
+    secureRandom.nextBytes(code);
+    String codeVerifier = Base64.getUrlEncoder()
+        .withoutPadding()
+        .encodeToString(code);
+
+    return codeVerifier;
+  }
+
+static String generateChallenge(String verifier) {
+  try {
+    MessageDigest messageDigest = MessageDigest.getInstance("SHA-256");
+    byte [] digested = messageDigest.digest(verifier.getBytes());
+    String codeChallenge = Base64.getUrlEncoder()
+        .withoutPadding()
+        .encodeToString(digested);
+
+    return codeChallenge;
+  } catch (NoSuchAlgorithmException e) {
+    throw new RuntimeException(e);
+  }
+}
+
+var codeVerifier = generateVerifier();
+
+System.out.println("verifier: " + codeVerifier);
+System.out.println("code challenge: " + generateChallenge(codeVerifier));

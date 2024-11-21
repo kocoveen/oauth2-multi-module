@@ -105,7 +105,7 @@ public class SecurityConfig {
 					t.add(AuthorizationGrantType.REFRESH_TOKEN);
 				})
 				.redirectUris(u -> {
-					u.add("https://www.manning.com/authorized");
+					u.add("http://localhost:8080/login/oauth2/code/my_authorization_server");
 				})
 				.scopes(s -> {
 					s.add(OidcScopes.OPENID);

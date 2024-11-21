@@ -5,5 +5,9 @@ plugins {
 }
 
 dependencies {
+	/* Client */
 	implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
+
+	/* Web */
+	implementation 'org.springframework.boot:spring-boot-starter-web'
 }
