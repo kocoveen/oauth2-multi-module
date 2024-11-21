@@ -1,5 +1,6 @@
 package com.example.resourceserver;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -11,22 +12,19 @@ import org.springframework.security.web.SecurityFilterChain;
 @Configuration
 public class SecurityConfig {
 
+    @Value("${keySetURI}")
+    private String keySetUri;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http.csrf(AbstractHttpConfigurer::disable)
-            .authorizeHttpRequests((authorizeRequests) -> {
-                authorizeRequests.anyRequest().authenticated();
-            })
-            .oauth2ResourceServer((resourceServer) -> {
-                resourceServer.jwt(Customizer.withDefaults());
-            });
+        http.oauth2ResourceServer(
+            c -> c.jwt(
+                Customizer.withDefaults()
+            )
+        );
 
-        http.oauth2ResourceServer(resourceServer ->
-            resourceServer
-                .accessDeniedHandler(new BearerTokenAccessDeniedHandler())
-                .jwt(jwtConfigurer -> jwtConfigurer
-                    .jwtAuthenticationConverter(new CustomPrincipalJwtConvertor())
-                )
+        http.authorizeHttpRequests(
+            c -> c.anyRequest().authenticated()
         );
         return http.build();
     }
