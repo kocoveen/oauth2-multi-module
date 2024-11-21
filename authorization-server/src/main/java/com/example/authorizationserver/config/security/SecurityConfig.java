@@ -2,10 +2,12 @@ package com.example.authorizationserver.config.security;
 
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.util.UUID;
 
+import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
@@ -29,6 +31,8 @@ import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.factory.PasswordEncoderFactories;
+import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.core.AuthorizationGrantType;
 import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
@@ -50,91 +54,43 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
-@EnableWebSecurity
 public class SecurityConfig {
 
-	/**
-	 * 프로토콜 엔드포인트를 위한 Spring Security filter chain
-	 * @param http
-	 * @return SecurityFilterChain
-	 * @throws Exception
-	 */
 	@Bean
 	@Order(1)
-	public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) throws Exception {
+	public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 		OAuth2AuthorizationServerConfiguration.applyDefaultSecurity(http);
-		http.getConfigurer(OAuth2AuthorizationServerConfigurer.class)
-			.oidc(Customizer.withDefaults());	// OpenID Connect 1.0 사용
 
-		http
-			// 인증 엔드포인트에서 비인가인 경우, 로그인 페이지로 리다이렉트
-			.exceptionHandling((exceptions) -> exceptions
-				.defaultAuthenticationEntryPointFor(
-					new LoginUrlAuthenticationEntryPoint("/login"),
-					new MediaTypeRequestMatcher(MediaType.TEXT_HTML)
-				)
-			)
-			// 사용자 정보, 클라이언트를 위한 액세스 토큰 수용
-			.oauth2ResourceServer((oauth2) -> oauth2
-				.jwt(Customizer.withDefaults()));
+		http.getConfigurer(OAuth2AuthorizationServerConfigurer.class).oidc(Customizer.withDefaults());
 
-		return http.cors(Customizer.withDefaults()).build(); // CORS
+		http.exceptionHandling((e) -> e.authenticationEntryPoint(
+			new LoginUrlAuthenticationEntryPoint("/login")
+		));
+
+		return http.build();
 	}
 
-	/**
-	 * 인증을 위한 Spring Security filter chain
-	 * @param http
-	 * @return SecurityFilterChain
-	 * @throws Exception
-	 */
 	@Bean
 	@Order(2)
 	public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
-		http.csrf(AbstractHttpConfigurer::disable);
-		http
-			.authorizeHttpRequests(authorize -> {
-				authorize
-					.requestMatchers("/**").permitAll()
-					.requestMatchers(PathRequest.toH2Console()).permitAll()
-					.anyRequest().authenticated();
-				}
-			)
-			.headers(headers -> headers.frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin))
-			// 인증 서버 필터 체인에서 로그인 페이지로의 리디렉션을 처리하는 폼 로그인
-			.formLogin(Customizer.withDefaults())
-			.oauth2Login(Customizer.withDefaults());
+		http.formLogin(Customizer.withDefaults());
 
-		return http.cors(Customizer.withDefaults()).build(); // CORS
+		http.authorizeHttpRequests(
+			c -> c.anyRequest().authenticated()
+		);
+
+		return http.build();
 	}
 
 	/**
-	 * CORS를 방지하기 위해 허용할 origin 등록
+	 * Defining the user details management
 	 * @return
 	 */
 	@Bean
-	public CorsConfigurationSource corsConfigurationSource() {
-		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-		CorsConfiguration config = new CorsConfiguration();
-		config.addAllowedHeader("*"); // 허용 Header
-		config.addAllowedMethod("*"); // 허용 HTTP Method
-		config.addAllowedOrigin("http://127.0.0.1:4200"); // 허용 URI
-		config.setAllowCredentials(true); // 허용
-		source.registerCorsConfiguration("/**", config);
-		return source;
-	}
-
-	/**
-	 * 인증할 사용자를 검색하기 위한 UserDetailsService 인스턴스
-	 * @return InMemoryUserDetailsManager
-	 */
-	@Bean
 	public UserDetailsService userDetailsService() {
-		UserDetails userDetails = User
-			.withUsername("user")
-			.passwordEncoder(passwordEncoder()::encode)
-			// .password(passwordEncoder().encode("password"))
-			.password("1234")
-			.roles("USER", "ADMIN")
+		UserDetails userDetails = User.withUsername("leessang")
+			.password("{noop}password")
+			.roles("USER")
 			.build();
 
 		return new InMemoryUserDetailsManager(userDetails);
@@ -142,105 +98,62 @@ public class SecurityConfig {
 
 	@Bean
 	public PasswordEncoder passwordEncoder() {
-		return new BCryptPasswordEncoder();
+		// 기본적으로 지원하는 스프링 시큐리티의 PasswordEncoder
+		return PasswordEncoderFactories.createDelegatingPasswordEncoder();
 	}
 
-	/**
-	 * 클라이언트를 관리하기 위한 등록 역할의 Client Repository
-	 * @return InMemoryRegisteredClientRepository
-	 */
 	@Bean
 	public RegisteredClientRepository registeredClientRepository() {
-		RegisteredClient customClient = RegisteredClient.withId(UUID.randomUUID().toString())
-			.clientName("custom")
-			.clientId("custom-client-id")
-			.clientSecret(passwordEncoder().encode("custom-client-secret"))
-			.clientAuthenticationMethods(methods -> {
-				methods.add(ClientAuthenticationMethod.CLIENT_SECRET_BASIC);
-			})
-			.authorizationGrantTypes(types -> {
-				types.add(AuthorizationGrantType.AUTHORIZATION_CODE);
-				types.add(AuthorizationGrantType.REFRESH_TOKEN);
-			})
-			.redirectUris(uris -> {
-				uris.add("http://localhost:3000");
-			})
-			.postLogoutRedirectUris(uris -> {
-				uris.add("http://localhost:3000");
-			})
-			.scopes(scopes -> {
-				scopes.add(OidcScopes.OPENID);
-				scopes.add(OidcScopes.PROFILE);
-			})
-			// Client Setting
-			.clientSettings(ClientSettings.builder()
-				.requireAuthorizationConsent(true)
-				// .requireProofKey(true)
-				.build()
-			)
-			.build();
+		RegisteredClient registeredClient =
+			RegisteredClient
+				.withId(UUID.randomUUID().toString())
+				.clientId("client")
+				.clientName("client")
+				.clientSecret("{noop}secret")
+				.clientAuthenticationMethods(m -> {
+					m.add(ClientAuthenticationMethod.CLIENT_SECRET_BASIC);
+				})
+				.authorizationGrantTypes(t -> {
+					t.add(AuthorizationGrantType.AUTHORIZATION_CODE);
+					// t.add(AuthorizationGrantType.CLIENT_CREDENTIALS);
+					t.add(AuthorizationGrantType.REFRESH_TOKEN);
+				})
+				.redirectUris(u -> {
+					u.add("https://www.manning.com/authorized");
+				})
+				.scopes(s -> {
+					s.add(OidcScopes.OPENID);
+				})
+				.build();
 
-		return new InMemoryRegisteredClientRepository(customClient);
+		return new InMemoryRegisteredClientRepository(registeredClient);
 	}
 
-	/**
-	 * 액세스 토큰 서명을 위한 com.nimbusds.jose.jwk.source.JWKSource 인스턴스
-	 * 실제 운영시에는 pem key 를 keyStore에 저장하고 주입 받아야 함
-	 * @return ImmutableJWKSet
-	 */
 	@Bean
-	public JWKSource<SecurityContext> jwkSource() {
-		KeyPair keyPair = generateRsaKey();
+	public JWKSource<SecurityContext> jwkSource() throws NoSuchAlgorithmException {
+		KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+
+		keyPairGenerator.initialize(2048);
+		KeyPair keyPair = keyPairGenerator.generateKeyPair();
+
 		RSAPublicKey publicKey = (RSAPublicKey) keyPair.getPublic();
 		RSAPrivateKey privateKey = (RSAPrivateKey) keyPair.getPrivate();
+
 		RSAKey rsaKey = new RSAKey.Builder(publicKey)
-				.privateKey(privateKey)
-				.keyID(UUID.randomUUID().toString())
-				.build();
+			.privateKey(privateKey)
+			.keyID(UUID.randomUUID().toString())
+			.build();
+
 		JWKSet jwkSet = new JWKSet(rsaKey);
-		return (jwkSelector, securityContext) -> jwkSelector.select(jwkSet);
+		return new ImmutableJWKSet<>(jwkSet);
 	}
 
-	/**
-	 * 시작 시 생성된 키가 있는 java.security.KeyPair 인스턴스로 위의 JWKSource 만드는 데 사용
-	 * @return KeyPair
-	 */
-	private static KeyPair generateRsaKey() {
-		KeyPair keyPair;
-		try {
-			KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
-			keyPairGenerator.initialize(2048);
-			keyPair = keyPairGenerator.generateKeyPair();
-		}
-		catch (Exception ex) {
-			throw new IllegalStateException(ex);
-		}
-		return keyPair;
-	}
-
-	/**
-	 * 서명된 액세스 토큰을 디코딩하기 위한 JwtDecoder
-	 * 토큰 검증에 필요
-	 * @param jwkSource
-	 * @return OAuth2AuthorizationServerConfiguration
-	 */
-	@Bean
-	public JwtDecoder jwtDecoder(JWKSource<SecurityContext> jwkSource) {
-		return OAuth2AuthorizationServerConfiguration.jwtDecoder(jwkSource);
-	}
-
-	/**
-	 * 	Spring Authorization Server 구성을 위한 AuthorizationServerSettings
-	 * 	여러 EndPoint 설정함
-	 * @return AuthorizationServerSettings
-	 */
 	@Bean
 	public AuthorizationServerSettings authorizationServerSettings() {
-		return AuthorizationServerSettings.builder()
-			.build();
+		return AuthorizationServerSettings.builder().build();
 	}
 
-	/* SQL 실행문 */
+
 	@Bean
 	public EmbeddedDatabase embeddedDatabase() {
 		// @formatter:off
