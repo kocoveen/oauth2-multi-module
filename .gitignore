@@ -37,10 +37,7 @@ out/
 .vscode/
 
 ### ENV ###
-.env
+client/.env
 /authorization-server/.env
 /client/.env
 /resource-server/.env
-
-### YAML ###
-*.yml

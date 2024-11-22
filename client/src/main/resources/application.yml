@@ -1,0 +1,28 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: client
+
+  security:
+    oauth2:
+      client:
+        provider:
+          my_authorization_server:
+            issuer-uri: http://127.0.0.1:7070
+
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+
+          my_authorization_server:
+            client-id: client
+            client-name: client
+            client-secret: secret
+            provider: my_authorization_server
+            client-authentication-method: client_secret_basic
+            redirect-uri: http://localhost:8080/login/oauth2/code/my_authorization_server
+            scope:
+              - openid
